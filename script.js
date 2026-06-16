@@ -1,38 +1,41 @@
 const GRID_SIZE = 20;
 const CELL = 28;
 const TOTAL_AGENTS = 24;
-const STEP_INTERVAL = 180;
+const STEP_INTERVAL = 240;
 
 const colors = {
-  bg: "#12171f",
-  line: "#445065",
-  road: "#333c4a",
-  block: "#2a313c",
-  shelter: "#46c78e",
-  agent: "#ffd54f",
-  agentSimple: "#ff975b",
-  route: "#54b6ff",
-  routeSimple: "#ffbd56",
-  fire: "#e85147",
-  flood: "#3a91d6",
-  industrial: "#ae6fe8",
+  bg: "#07111f",
+  line: "#3a5877",
+  road: "#e6edf3",
+  roadAlt: "#c7d3df",
+  obstacle: "#101820",
+  shelter: "#20d17d",
+  agent: "#ffd84d",
+  agentSimple: "#ff9f43",
+  route: "#31c5ff",
+  routeGlow: "rgba(49, 197, 255, 0.95)",
+  routeSimple: "#ffb347",
+  fire: "#ff4d4d",
+  flood: "#2f9cff",
+  industrial: "#b56cff",
+  textDark: "#07111f",
 };
 
 const scenarios = [
   {
-    name: "Incendio",
+    name: "🔥 Incendio",
     kind: "fire",
     color: colors.fire,
     description: "Focos de calor bloqueiam quarteiroes e criam corredores estreitos.",
   },
   {
-    name: "Enchente",
+    name: "🌊 Enchente",
     kind: "flood",
     color: colors.flood,
     description: "Agua invade areas baixas e corta ruas proximas ao rio.",
   },
   {
-    name: "Acidente industrial",
+    name: "🏭 Acidente industrial",
     kind: "industrial",
     color: colors.industrial,
     description: "Zonas contaminadas isolam regioes perto da fabrica.",
@@ -56,6 +59,10 @@ const state = {
   elapsed: 0,
   lastFrame: performance.now(),
   stepAccumulator: 0,
+  aiFinishTime: null,
+  simpleFinishTime: null,
+  resultShown: false,
+  alertUntil: 0,
 };
 
 const aiCanvas = document.querySelector("#aiCanvas");
@@ -104,7 +111,7 @@ function reconstruct(cameFrom, currentKey) {
 }
 
 function aStar(start, goals, blocked) {
-  const open = [{ cell: start, priority: 0, cost: 0 }];
+  const open = [{ cell: start, priority: 0 }];
   const cameFrom = new Map();
   const gScore = new Map([[key(start), 0]]);
   const goalKeys = new Set(goals.map(key));
@@ -123,7 +130,7 @@ function aStar(start, goals, blocked) {
         cameFrom.set(nextKey, currentKey);
         gScore.set(nextKey, tentative);
         const goal = nearestGoal(next, goals);
-        open.push({ cell: next, priority: tentative + heuristic(next, goal), cost: tentative });
+        open.push({ cell: next, priority: tentative + heuristic(next, goal) });
       }
     }
   }
@@ -147,9 +154,8 @@ function simpleRoute(start, goals, blocked) {
 
     let moved = false;
     for (const next of candidates) {
-      const nextKey = key(next);
       const previous = route.length > 1 ? route[route.length - 2] : null;
-      if (!blocked.has(nextKey) && (!previous || !sameCell(next, previous))) {
+      if (!state.blocked.has(key(next)) && (!previous || !sameCell(next, previous))) {
         [x, y] = next;
         route.push([x, y]);
         moved = true;
@@ -171,9 +177,7 @@ function generateObstacles(kind, seed) {
   if (kind === "fire") {
     for (const [cx, cy] of [[6, 7], [11, 11], [14, 6]]) {
       for (let x = cx - 2; x <= cx + 2; x += 1) {
-        for (let y = cy - 2; y <= cy + 2; y += 1) {
-          if (rng() < 0.58) add(x, y);
-        }
+        for (let y = cy - 2; y <= cy + 2; y += 1) if (rng() < 0.58) add(x, y);
       }
     }
     for (let y = 3; y < 17; y += 1) if (![5, 12].includes(y)) add(9, y);
@@ -198,15 +202,23 @@ function generateObstacles(kind, seed) {
 }
 
 function makeAgents(blocked, useAi) {
-  return starts.map((start) => ({
-    start,
-    pos: [...start],
-    route: useAi ? aStar(start, shelters, blocked) : simpleRoute(start, shelters, blocked),
-    step: 0,
-    evacuated: false,
-    evacTime: null,
-    waitTicks: 0,
-  }));
+  return starts.map((start) => {
+    const route = useAi ? aStar(start, shelters, blocked) : simpleRoute(start, shelters, blocked);
+    return {
+      start,
+      pos: [...start],
+      from: [...start],
+      to: [...start],
+      visual: [...start],
+      route,
+      step: 0,
+      moveProgress: 1,
+      evacuated: false,
+      evacTime: null,
+      waitTicks: 0,
+      recalcCount: 0,
+    };
+  });
 }
 
 function reset(newSeed = false) {
@@ -218,45 +230,91 @@ function reset(newSeed = false) {
   state.elapsed = 0;
   state.stepAccumulator = 0;
   state.paused = false;
+  state.aiFinishTime = null;
+  state.simpleFinishTime = null;
+  state.resultShown = false;
+  state.alertUntil = performance.now() + 1800;
+  document.querySelector("#resultModal").classList.remove("show");
   updateScenarioUi();
   updatePauseButton();
 }
 
-function updateAgents(agents) {
+function triggerAiAlert() {
+  state.alertUntil = performance.now() + 1800;
+}
+
+function updateAgents(agents, useAi) {
   const occupied = new Map();
   for (const agent of agents) {
     if (!agent.evacuated) occupied.set(key(agent.pos), (occupied.get(key(agent.pos)) ?? 0) + 1);
   }
 
   for (const agent of agents) {
-    if (agent.evacuated) continue;
+    if (agent.evacuated || agent.moveProgress < 1) continue;
     if (shelters.some((shelter) => sameCell(agent.pos, shelter))) {
       agent.evacuated = true;
       agent.evacTime = state.elapsed;
       continue;
     }
+
     if (agent.step + 1 >= agent.route.length) {
       agent.waitTicks += 1;
+      if (useAi && agent.recalcCount < 2) {
+        agent.route = aStar(agent.pos, shelters, state.blocked);
+        agent.step = 0;
+        agent.recalcCount += 1;
+        triggerAiAlert();
+      }
       continue;
     }
 
     const next = agent.route[agent.step + 1];
-    if ((occupied.get(key(next)) ?? 0) > 1 && Math.random() < 0.5) {
+    if ((occupied.get(key(next)) ?? 0) > 1 && Math.random() < 0.42) {
       agent.waitTicks += 1;
+      if (useAi && agent.waitTicks % 4 === 0) {
+        agent.route = aStar(agent.pos, shelters, state.blocked);
+        agent.step = 0;
+        agent.recalcCount += 1;
+        triggerAiAlert();
+      }
       continue;
     }
 
     agent.step += 1;
+    agent.from = [...agent.pos];
+    agent.to = [...next];
+    agent.moveProgress = 0;
     agent.pos = [...next];
     occupied.set(key(agent.pos), (occupied.get(key(agent.pos)) ?? 0) + 1);
-    if (shelters.some((shelter) => sameCell(agent.pos, shelter))) {
-      agent.evacuated = true;
-      agent.evacTime = state.elapsed;
+  }
+}
+
+function animateAgents(agents, delta) {
+  for (const agent of agents) {
+    if (agent.evacuated) continue;
+    if (agent.moveProgress < 1) {
+      agent.moveProgress = Math.min(1, agent.moveProgress + delta / STEP_INTERVAL);
+      const t = easeInOut(agent.moveProgress);
+      agent.visual = [
+        agent.from[0] + (agent.to[0] - agent.from[0]) * t,
+        agent.from[1] + (agent.to[1] - agent.from[1]) * t,
+      ];
+      if (agent.moveProgress >= 1) {
+        agent.visual = [...agent.pos];
+        if (shelters.some((shelter) => sameCell(agent.pos, shelter))) {
+          agent.evacuated = true;
+          agent.evacTime = state.elapsed;
+        }
+      }
     }
   }
 }
 
-function metrics(agents) {
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function metrics(agents, finishTime) {
   const evacuated = agents.filter((agent) => agent.evacuated);
   const waits = agents.reduce((sum, agent) => sum + agent.waitTicks, 0);
   const steps = Math.max(1, agents.reduce((sum, agent) => sum + Math.max(agent.step, 1), 0));
@@ -265,42 +323,104 @@ function metrics(agents) {
     avgTime: evacuated.length ? evacuated.reduce((sum, agent) => sum + agent.evacTime, 0) / evacuated.length : 0,
     congestion: Math.min(100, (waits / steps) * 100),
     remaining: agents.length - evacuated.length,
+    totalTime: finishTime ?? state.elapsed,
   };
 }
 
-function drawMap(ctx, agents, routeColor, agentColor) {
+function scoreFor(data) {
+  const savedScore = (data.evacuated / TOTAL_AGENTS) * 70;
+  const timeScore = Math.max(0, 20 - data.avgTime * 0.75);
+  const congestionScore = Math.max(0, 10 - data.congestion * 0.1);
+  return Math.round(savedScore + timeScore + congestionScore);
+}
+
+function drawMap(ctx, agents, routeColor, agentColor, useAi) {
   const scenario = scenarios[state.scenarioIndex];
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   for (let x = 0; x < GRID_SIZE; x += 1) {
     for (let y = 0; y < GRID_SIZE; y += 1) {
-      ctx.fillStyle = (x + y) % 2 ? colors.road : colors.block;
+      ctx.fillStyle = (x + y) % 2 ? colors.road : colors.roadAlt;
       if (state.blocked.has(`${x},${y}`)) ctx.fillStyle = scenario.color;
       ctx.fillRect(x * CELL, y * CELL, CELL - 1, CELL - 1);
-
-      if (shelters.some((shelter) => sameCell(shelter, [x, y]))) {
-        ctx.fillStyle = colors.shelter;
-        roundedRect(ctx, x * CELL + 5, y * CELL + 5, CELL - 10, CELL - 10, 5);
-        ctx.fill();
-      }
     }
   }
 
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = routeColor;
-  for (const agent of agents) {
-    if (agent.route.length < 2 || agent.evacuated) continue;
+  drawGrid(ctx);
+  drawShelters(ctx);
+  drawRoutes(ctx, agents, routeColor, useAi);
+  drawAgents(ctx, agents, agentColor);
+
+  ctx.strokeStyle = colors.line;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, ctx.canvas.width - 3, ctx.canvas.height - 3);
+}
+
+function drawGrid(ctx) {
+  ctx.strokeStyle = "rgba(7, 17, 31, 0.18)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= GRID_SIZE; i += 1) {
     ctx.beginPath();
-    const visible = agent.route.slice(agent.step);
-    visible.forEach(([x, y], index) => {
-      const px = x * CELL + CELL / 2;
-      const py = y * CELL + CELL / 2;
-      if (index === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    });
+    ctx.moveTo(i * CELL, 0);
+    ctx.lineTo(i * CELL, GRID_SIZE * CELL);
+    ctx.moveTo(0, i * CELL);
+    ctx.lineTo(GRID_SIZE * CELL, i * CELL);
     ctx.stroke();
   }
+}
 
+function drawShelters(ctx) {
+  for (const [x, y] of shelters) {
+    const px = x * CELL;
+    const py = y * CELL;
+    ctx.fillStyle = colors.shelter;
+    roundedRect(ctx, px + 4, py + 4, CELL - 8, CELL - 8, 6);
+    ctx.fill();
+    ctx.fillStyle = colors.textDark;
+    ctx.font = "bold 15px Segoe UI, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("A", px + CELL / 2, py + CELL / 2);
+  }
+}
+
+function drawRoutes(ctx, agents, routeColor, useAi) {
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const agent of agents) {
+    if (agent.route.length < 2 || agent.evacuated) continue;
+    const visible = agent.route.slice(agent.step);
+    if (visible.length < 2) continue;
+
+    if (useAi) {
+      ctx.shadowColor = colors.routeGlow;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(49, 197, 255, 0.42)";
+      tracePath(ctx, visible);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.lineWidth = useAi ? 3 : 2;
+    ctx.strokeStyle = routeColor;
+    tracePath(ctx, visible);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+}
+
+function tracePath(ctx, points) {
+  ctx.beginPath();
+  points.forEach(([x, y], index) => {
+    const px = x * CELL + CELL / 2;
+    const py = y * CELL + CELL / 2;
+    if (index === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+}
+
+function drawAgents(ctx, agents, agentColor) {
   const cellCounts = new Map();
   for (const agent of agents) {
     if (!agent.evacuated) cellCounts.set(key(agent.pos), (cellCounts.get(key(agent.pos)) ?? 0) + 1);
@@ -308,21 +428,25 @@ function drawMap(ctx, agents, routeColor, agentColor) {
 
   for (const agent of agents) {
     if (agent.evacuated) continue;
-    const px = agent.pos[0] * CELL + CELL / 2;
-    const py = agent.pos[1] * CELL + CELL / 2;
-    const radius = (cellCounts.get(key(agent.pos)) ?? 0) > 1 ? 10 : 7;
+    const px = agent.visual[0] * CELL + CELL / 2;
+    const py = agent.visual[1] * CELL + CELL / 2;
+    const crowded = (cellCounts.get(key(agent.pos)) ?? 0) > 1;
+    const radius = crowded ? 10 : 7.5;
     ctx.beginPath();
     ctx.fillStyle = agentColor;
     ctx.arc(px, py, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.strokeStyle = colors.bg;
     ctx.stroke();
+    if (crowded) {
+      ctx.beginPath();
+      ctx.strokeStyle = "#ff4d4d";
+      ctx.lineWidth = 2;
+      ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
-
-  ctx.strokeStyle = colors.line;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, ctx.canvas.width - 2, ctx.canvas.height - 2);
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -339,19 +463,65 @@ function roundedRect(ctx, x, y, width, height, radius) {
 }
 
 function updateMetrics() {
-  const ai = metrics(state.aiAgents);
-  const simple = metrics(state.simpleAgents);
+  const ai = metrics(state.aiAgents, state.aiFinishTime);
+  const human = metrics(state.simpleAgents, state.simpleFinishTime);
+  const aiScore = scoreFor(ai);
+  const humanScore = scoreFor(human);
+  const efficiency = Math.max(0, Math.min(100, aiScore - humanScore + 50));
+
+  setText("savedKpi", ai.evacuated.toFixed(0));
+  setText("remainingKpi", ai.remaining.toFixed(0));
+  setText("avgKpi", `${ai.avgTime.toFixed(1)}s`);
+  setText("efficiencyKpi", `${efficiency}%`);
+
   setText("aiEvacuated", `${ai.evacuated}/${TOTAL_AGENTS}`);
   setText("aiAvg", `${ai.avgTime.toFixed(1)}s`);
   setText("aiCongestion", `${ai.congestion.toFixed(0)}%`);
   setText("aiRemaining", ai.remaining.toFixed(0));
-  setText("simpleEvacuated", `${simple.evacuated}/${TOTAL_AGENTS}`);
-  setText("simpleAvg", `${simple.avgTime.toFixed(1)}s`);
-  setText("simpleCongestion", `${simple.congestion.toFixed(0)}%`);
-  setText("simpleRemaining", simple.remaining.toFixed(0));
-  setText("evacuationComparison", `IA evacuou ${(ai.evacuated - simple.evacuated) >= 0 ? "+" : ""}${ai.evacuated - simple.evacuated} pessoa(s)`);
-  const avgGain = simple.avgTime && ai.avgTime ? simple.avgTime - ai.avgTime : 0;
+  setText("simpleEvacuated", `${human.evacuated}/${TOTAL_AGENTS}`);
+  setText("simpleAvg", `${human.avgTime.toFixed(1)}s`);
+  setText("simpleCongestion", `${human.congestion.toFixed(0)}%`);
+  setText("simpleRemaining", human.remaining.toFixed(0));
+  setText("aiScore", `${aiScore} pontos`);
+  setText("humanScore", `${humanScore} pontos`);
+  setText("winnerText", aiScore >= humanScore ? "🤖 A IA esta conduzindo a evacuacao com melhor desempenho." : "👤 A rota simples esta temporariamente na frente.");
+  setText("evacuationComparison", `IA salvou ${(ai.evacuated - human.evacuated) >= 0 ? "+" : ""}${ai.evacuated - human.evacuated} pessoa(s)`);
+  const avgGain = human.avgTime && ai.avgTime ? human.avgTime - ai.avgTime : 0;
   setText("timeComparison", `Ganho medio de tempo: ${avgGain >= 0 ? "+" : ""}${avgGain.toFixed(1)}s`);
+
+  document.querySelector("#aiAlert").classList.toggle("show", performance.now() < state.alertUntil);
+}
+
+function checkFinish() {
+  const ai = metrics(state.aiAgents, state.aiFinishTime);
+  const human = metrics(state.simpleAgents, state.simpleFinishTime);
+
+  if (!state.aiFinishTime && ai.evacuated === TOTAL_AGENTS) state.aiFinishTime = state.elapsed;
+  if (!state.simpleFinishTime && human.evacuated === TOTAL_AGENTS) state.simpleFinishTime = state.elapsed;
+
+  const allDone = (state.aiFinishTime || ai.remaining === 0) && (state.simpleFinishTime || human.remaining === 0);
+  const timedOut = state.elapsed > 42;
+  if (!state.resultShown && (allDone || timedOut)) showResults();
+}
+
+function showResults() {
+  state.resultShown = true;
+  const ai = metrics(state.aiAgents, state.aiFinishTime);
+  const human = metrics(state.simpleAgents, state.simpleFinishTime);
+  const aiScore = scoreFor(ai);
+  const humanScore = scoreFor(human);
+  const aiBest = aiScore >= humanScore;
+
+  setText("aiTotalResult", `${ai.totalTime.toFixed(1)}s`);
+  setText("aiSavedResult", `${ai.evacuated}/${TOTAL_AGENTS}`);
+  setText("aiCongestionResult", `${ai.congestion.toFixed(0)}%`);
+  setText("humanTotalResult", `${human.totalTime.toFixed(1)}s`);
+  setText("humanSavedResult", `${human.evacuated}/${TOTAL_AGENTS}`);
+  setText("humanCongestionResult", `${human.congestion.toFixed(0)}%`);
+  setText("resultWinner", aiBest ? "🏆 Melhor estrategia: Inteligencia Artificial" : "🏆 Melhor estrategia: Rota simples");
+  document.querySelector("#aiResultCard").classList.toggle("best", aiBest);
+  document.querySelector("#humanResultCard").classList.toggle("best", !aiBest);
+  document.querySelector("#resultModal").classList.add("show");
 }
 
 function setText(id, value) {
@@ -360,7 +530,7 @@ function setText(id, value) {
 
 function updateScenarioUi() {
   const scenario = scenarios[state.scenarioIndex];
-  document.querySelector(".topbar").style.borderBottomColor = scenario.color;
+  document.documentElement.style.setProperty("--fire", scenario.color);
   document.querySelectorAll(".scenario-button").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.scenario) === state.scenarioIndex);
   });
@@ -371,23 +541,26 @@ function updateScenarioUi() {
 }
 
 function updatePauseButton() {
-  document.querySelector("#pauseButton").textContent = state.paused ? "Continuar" : "Pausar";
+  document.querySelector("#pauseButton").textContent = state.paused ? "▶️ Continuar" : "⏸️ Pausar";
 }
 
 function frame(now) {
-  const delta = now - state.lastFrame;
+  const delta = Math.min(50, now - state.lastFrame);
   state.lastFrame = now;
   if (!state.paused) {
     state.elapsed += delta / 1000;
     state.stepAccumulator += delta;
+    animateAgents(state.aiAgents, delta);
+    animateAgents(state.simpleAgents, delta);
     while (state.stepAccumulator >= STEP_INTERVAL) {
-      updateAgents(state.aiAgents);
-      updateAgents(state.simpleAgents);
+      updateAgents(state.aiAgents, true);
+      updateAgents(state.simpleAgents, false);
       state.stepAccumulator -= STEP_INTERVAL;
     }
+    checkFinish();
   }
-  drawMap(aiCtx, state.aiAgents, colors.route, colors.agent);
-  drawMap(simpleCtx, state.simpleAgents, colors.routeSimple, colors.agentSimple);
+  drawMap(aiCtx, state.aiAgents, colors.route, colors.agent, true);
+  drawMap(simpleCtx, state.simpleAgents, colors.routeSimple, colors.agentSimple, false);
   updateMetrics();
   requestAnimationFrame(frame);
 }
@@ -406,6 +579,9 @@ document.querySelector("#pauseButton").addEventListener("click", () => {
 
 document.querySelector("#resetButton").addEventListener("click", () => reset());
 document.querySelector("#newButton").addEventListener("click", () => reset(true));
+document.querySelector("#closeResultButton").addEventListener("click", () => {
+  document.querySelector("#resultModal").classList.remove("show");
+});
 
 window.addEventListener("keydown", (event) => {
   if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(document.activeElement.tagName)) return;
