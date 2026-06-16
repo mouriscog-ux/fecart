@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SmartEvac</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>SmartEvac</h1>
+          <p>Simulador urbano de evacuacao com comparacao entre IA e rota simples</p>
+        </div>
+        <div class="actions" aria-label="Controles da simulacao">
+          <button class="scenario-button active" data-scenario="0">Incendio</button>
+          <button class="scenario-button" data-scenario="1">Enchente</button>
+          <button class="scenario-button" data-scenario="2">Acidente industrial</button>
+          <button id="pauseButton">Pausar</button>
+          <button id="resetButton">Reiniciar</button>
+          <button id="newButton">Novo</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <section class="maps" aria-label="Comparacao visual de rotas">
+          <article class="map-panel">
+            <div class="map-title">
+              <h2>Com IA (A*)</h2>
+              <span class="legend ai">rota otimizada</span>
+            </div>
+            <canvas id="aiCanvas" width="560" height="560" aria-label="Mapa com IA"></canvas>
+          </article>
+
+          <article class="map-panel">
+            <div class="map-title">
+              <h2>Sem IA</h2>
+              <span class="legend simple">rota simples</span>
+            </div>
+            <canvas id="simpleCanvas" width="560" height="560" aria-label="Mapa sem IA"></canvas>
+          </article>
+        </section>
+
+        <aside class="dashboard">
+          <div class="scenario-card">
+            <span id="scenarioTag">Incendio</span>
+            <h2>Painel ao vivo</h2>
+            <p id="scenarioDescription">Focos de calor bloqueiam quarteiroes e criam corredores estreitos.</p>
+          </div>
+
+          <div class="metric-group">
+            <h3>Com IA</h3>
+            <dl>
+              <div><dt>Pessoas evacuadas</dt><dd id="aiEvacuated">0/24</dd></div>
+              <div><dt>Tempo medio</dt><dd id="aiAvg">0.0s</dd></div>
+              <div><dt>Congestionamento</dt><dd id="aiCongestion">0%</dd></div>
+              <div><dt>Restantes</dt><dd id="aiRemaining">24</dd></div>
+            </dl>
+          </div>
+
+          <div class="metric-group simple">
+            <h3>Sem IA</h3>
+            <dl>
+              <div><dt>Pessoas evacuadas</dt><dd id="simpleEvacuated">0/24</dd></div>
+              <div><dt>Tempo medio</dt><dd id="simpleAvg">0.0s</dd></div>
+              <div><dt>Congestionamento</dt><dd id="simpleCongestion">0%</dd></div>
+              <div><dt>Restantes</dt><dd id="simpleRemaining">24</dd></div>
+            </dl>
+          </div>
+
+          <div class="comparison">
+            <h3>Comparacao de desempenho</h3>
+            <p id="evacuationComparison">IA evacuou +0 pessoa(s)</p>
+            <p id="timeComparison">Ganho medio de tempo: +0.0s</p>
+          </div>
+
+          <p class="shortcuts">Teclas: 1, 2, 3 mudam cenario | Espaco pausa | R reinicia | N novo mapa</p>
+        </aside>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
