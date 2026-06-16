@@ -37,6 +37,69 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
 }
 
+.start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(7, 17, 31, 0.58), rgba(7, 17, 31, 0.9)),
+    radial-gradient(circle at 20% 20%, rgba(49, 197, 255, 0.28), transparent 28%),
+    radial-gradient(circle at 80% 70%, rgba(32, 209, 125, 0.18), transparent 30%),
+    #07111f;
+}
+
+.start-screen.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+
+.start-panel {
+  width: min(760px, 100%);
+  border: 1px solid rgba(159, 230, 255, 0.45);
+  border-radius: 14px;
+  background: rgba(13, 31, 50, 0.88);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.52), 0 0 70px rgba(49, 197, 255, 0.18);
+  padding: clamp(26px, 5vw, 46px);
+  text-align: center;
+}
+
+.start-panel h1 {
+  margin: 12px 0;
+  font-size: clamp(3rem, 9vw, 6.5rem);
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 28px rgba(49, 197, 255, 0.56);
+}
+
+.start-panel p {
+  color: var(--text);
+  font-size: clamp(1.1rem, 2.5vw, 1.55rem);
+}
+
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.start-actions button {
+  min-height: 48px;
+  padding: 0 20px;
+}
+
+.start-info {
+  margin-top: 20px;
+  border-radius: 8px;
+  background: rgba(49, 197, 255, 0.1);
+  color: var(--muted);
+  padding: 14px;
+}
+
 button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -271,7 +334,7 @@ canvas {
   aspect-ratio: 1;
   border: 2px solid var(--line);
   border-radius: 8px;
-  background: var(--obstacle);
+  background: #5f7180;
 }
 
 .ai-panel canvas {
@@ -288,11 +351,43 @@ canvas {
 .winner-panel,
 .metric-group,
 .comparison,
-.ai-alert {
+.ai-alert,
+.progress-panel,
+.live-feed,
+.minimap-card {
   border: 1px solid rgba(91, 127, 162, 0.55);
   border-radius: 8px;
   background: var(--panel-2);
   padding: 14px;
+}
+
+.progress-panel {
+  margin-top: 12px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 900;
+}
+
+.progress-track {
+  height: 20px;
+  border: 1px solid rgba(159, 230, 255, 0.35);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+  background: rgba(7, 17, 31, 0.7);
+}
+
+#progressBar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--success), var(--route));
+  box-shadow: 0 0 18px rgba(49, 197, 255, 0.55);
+  transition: width 0.28s ease;
 }
 
 .scenario-card span {
@@ -323,8 +418,33 @@ canvas {
 
 .winner-panel,
 .metric-grid,
-.comparison {
+.comparison,
+.live-feed,
+.minimap-card {
   margin-top: 12px;
+}
+
+.live-feed ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-feed li {
+  border-left: 3px solid var(--route);
+  padding: 7px 9px;
+  background: rgba(7, 17, 31, 0.35);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+#miniCanvas {
+  width: 100%;
+  max-width: 220px;
+  border-radius: 8px;
+  margin-top: 8px;
 }
 
 .winner-panel h3,
@@ -425,6 +545,20 @@ dd {
   font-size: 1.3rem;
   font-weight: 900;
   padding: 12px;
+}
+
+.result-celebration {
+  height: 28px;
+  color: #9fe6ff;
+  font-size: 1.6rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+  animation: resultPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes resultPulse {
+  from { opacity: 0.45; transform: translateY(0); }
+  to { opacity: 1; transform: translateY(-4px); }
 }
 
 .result-columns {

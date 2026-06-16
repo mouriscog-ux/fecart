@@ -2,6 +2,15 @@ const GRID_SIZE = 20;
 const CELL = 28;
 const TOTAL_AGENTS = 24;
 const STEP_INTERVAL = 240;
+const ROAD_CELLS = new Set();
+for (let i = 0; i < GRID_SIZE; i += 1) {
+  ROAD_CELLS.add(`4,${i}`);
+  ROAD_CELLS.add(`9,${i}`);
+  ROAD_CELLS.add(`14,${i}`);
+  ROAD_CELLS.add(`${i},4`);
+  ROAD_CELLS.add(`${i},9`);
+  ROAD_CELLS.add(`${i},14`);
+}
 
 const colors = {
   bg: "#07111f",
@@ -63,12 +72,19 @@ const state = {
   simpleFinishTime: null,
   resultShown: false,
   alertUntil: 0,
+  feed: ["Centro de Operacoes em monitoramento ativo."],
+  lastFeedAt: 0,
+  started: false,
+  soundOn: false,
+  audioContext: null,
 };
 
 const aiCanvas = document.querySelector("#aiCanvas");
 const simpleCanvas = document.querySelector("#simpleCanvas");
+const miniCanvas = document.querySelector("#miniCanvas");
 const aiCtx = aiCanvas.getContext("2d");
 const simpleCtx = simpleCanvas.getContext("2d");
+const miniCtx = miniCanvas.getContext("2d");
 
 function key(cell) {
   return `${cell[0]},${cell[1]}`;
@@ -234,6 +250,8 @@ function reset(newSeed = false) {
   state.simpleFinishTime = null;
   state.resultShown = false;
   state.alertUntil = performance.now() + 1800;
+  state.feed = ["Centro de Operacoes em monitoramento ativo.", "Novo bloqueio detectado"];
+  state.lastFeedAt = 0;
   document.querySelector("#resultModal").classList.remove("show");
   updateScenarioUi();
   updatePauseButton();
@@ -241,6 +259,39 @@ function reset(newSeed = false) {
 
 function triggerAiAlert() {
   state.alertUntil = performance.now() + 1800;
+  addFeed("IA recalculando rota");
+  playTone("alert");
+}
+
+function addFeed(message) {
+  if (state.feed[0] === message) return;
+  state.feed.unshift(message);
+  state.feed = state.feed.slice(0, 4);
+}
+
+function playTone(type) {
+  if (!state.soundOn) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  state.audioContext ||= new AudioContext();
+  const ctx = state.audioContext;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const tones = {
+    siren: [660, 440, 0.22],
+    alert: [880, 660, 0.14],
+    done: [523, 784, 0.32],
+  };
+  const [a, b, duration] = tones[type] || tones.alert;
+  osc.frequency.setValueAtTime(a, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(b, ctx.currentTime + duration);
+  gain.gain.setValueAtTime(0.001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + duration);
 }
 
 function updateAgents(agents, useAi) {
@@ -259,6 +310,7 @@ function updateAgents(agents, useAi) {
 
     if (agent.step + 1 >= agent.route.length) {
       agent.waitTicks += 1;
+      if (agent.waitTicks % 5 === 0) addFeed("Congestionamento identificado");
       if (useAi && agent.recalcCount < 2) {
         agent.route = aStar(agent.pos, shelters, state.blocked);
         agent.step = 0;
@@ -271,11 +323,13 @@ function updateAgents(agents, useAi) {
     const next = agent.route[agent.step + 1];
     if ((occupied.get(key(next)) ?? 0) > 1 && Math.random() < 0.42) {
       agent.waitTicks += 1;
+      addFeed("Congestionamento identificado");
       if (useAi && agent.waitTicks % 4 === 0) {
         agent.route = aStar(agent.pos, shelters, state.blocked);
         agent.step = 0;
         agent.recalcCount += 1;
         triggerAiAlert();
+        addFeed("Rota alternativa encontrada");
       }
       continue;
     }
@@ -337,35 +391,104 @@ function scoreFor(data) {
 function drawMap(ctx, agents, routeColor, agentColor, useAi) {
   const scenario = scenarios[state.scenarioIndex];
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-  for (let x = 0; x < GRID_SIZE; x += 1) {
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      ctx.fillStyle = (x + y) % 2 ? colors.road : colors.roadAlt;
-      if (state.blocked.has(`${x},${y}`)) ctx.fillStyle = scenario.color;
-      ctx.fillRect(x * CELL, y * CELL, CELL - 1, CELL - 1);
-    }
-  }
-
-  drawGrid(ctx);
+  drawCityBase(ctx);
+  drawHazards(ctx, scenario);
   drawShelters(ctx);
   drawRoutes(ctx, agents, routeColor, useAi);
   drawAgents(ctx, agents, agentColor);
+  drawParticles(ctx);
 
   ctx.strokeStyle = colors.line;
   ctx.lineWidth = 3;
   ctx.strokeRect(1.5, 1.5, ctx.canvas.width - 3, ctx.canvas.height - 3);
 }
 
-function drawGrid(ctx) {
-  ctx.strokeStyle = "rgba(7, 17, 31, 0.18)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= GRID_SIZE; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(i * CELL, 0);
-    ctx.lineTo(i * CELL, GRID_SIZE * CELL);
-    ctx.moveTo(0, i * CELL);
-    ctx.lineTo(GRID_SIZE * CELL, i * CELL);
-    ctx.stroke();
+function drawCityBase(ctx) {
+  ctx.fillStyle = "#6f8795";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  for (let x = 0; x < GRID_SIZE; x += 1) {
+    for (let y = 0; y < GRID_SIZE; y += 1) {
+      const px = x * CELL;
+      const py = y * CELL;
+      if (ROAD_CELLS.has(`${x},${y}`)) {
+        ctx.fillStyle = "#394957";
+        ctx.fillRect(px, py, CELL, CELL);
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        ctx.lineWidth = 1;
+        if (x === 4 || x === 9 || x === 14) {
+          ctx.beginPath();
+          ctx.moveTo(px + CELL / 2, py + 3);
+          ctx.lineTo(px + CELL / 2, py + CELL - 3);
+          ctx.stroke();
+        }
+        if (y === 4 || y === 9 || y === 14) {
+          ctx.beginPath();
+          ctx.moveTo(px + 3, py + CELL / 2);
+          ctx.lineTo(px + CELL - 3, py + CELL / 2);
+          ctx.stroke();
+        }
+      } else if ((x > 1 && x < 4 && y > 15) || (x > 15 && y > 4 && y < 8)) {
+        ctx.fillStyle = "#3fa66b";
+        roundedRect(ctx, px + 2, py + 2, CELL - 4, CELL - 4, 5);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.beginPath();
+        ctx.arc(px + 10, py + 10, 4, 0, Math.PI * 2);
+        ctx.arc(px + 18, py + 18, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = ((x + y) % 3 === 0) ? "#7f8f9a" : "#71828e";
+        ctx.fillRect(px, py, CELL, CELL);
+        const inset = 5 + ((x * 7 + y * 3) % 4);
+        ctx.fillStyle = ((x + y) % 2 === 0) ? "#263b4f" : "#30485e";
+        roundedRect(ctx, px + inset, py + inset, CELL - inset * 2, CELL - inset * 2, 3);
+        ctx.fill();
+        ctx.fillStyle = "rgba(159,230,255,0.28)";
+        ctx.fillRect(px + inset + 3, py + inset + 4, 4, 3);
+        ctx.fillRect(px + CELL - inset - 7, py + inset + 4, 4, 3);
+      }
+    }
+  }
+}
+
+function drawHazards(ctx, scenario) {
+  const time = performance.now() / 1000;
+  for (const cellKey of state.blocked) {
+    const [x, y] = cellKey.split(",").map(Number);
+    const px = x * CELL;
+    const py = y * CELL;
+    if (scenario.kind === "fire") {
+      const flicker = 0.75 + Math.sin(time * 7 + x + y) * 0.18;
+      ctx.fillStyle = `rgba(255, 77, 77, ${flicker})`;
+      roundedRect(ctx, px + 2, py + 2, CELL - 4, CELL - 4, 5);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255, 207, 64, 0.86)";
+      ctx.beginPath();
+      ctx.moveTo(px + CELL / 2, py + 5);
+      ctx.quadraticCurveTo(px + 6, py + 18, px + CELL / 2, py + 24);
+      ctx.quadraticCurveTo(px + 24, py + 16, px + CELL / 2, py + 5);
+      ctx.fill();
+    } else if (scenario.kind === "flood") {
+      const wave = Math.sin(time * 3 + x) * 2;
+      ctx.fillStyle = "rgba(47, 156, 255, 0.78)";
+      roundedRect(ctx, px + 1, py + 4 + wave, CELL - 2, CELL - 8, 7);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(190, 235, 255, 0.72)";
+      ctx.beginPath();
+      ctx.moveTo(px + 4, py + 14 + wave);
+      ctx.quadraticCurveTo(px + 12, py + 9 + wave, px + 20, py + 14 + wave);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "rgba(255, 177, 55, 0.78)";
+      roundedRect(ctx, px + 2, py + 2, CELL - 4, CELL - 4, 5);
+      ctx.fill();
+      ctx.fillStyle = "#07111f";
+      ctx.font = "bold 18px Segoe UI, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("⚠", px + CELL / 2, py + CELL / 2);
+    }
   }
 }
 
@@ -376,11 +499,17 @@ function drawShelters(ctx) {
     ctx.fillStyle = colors.shelter;
     roundedRect(ctx, px + 4, py + 4, CELL - 8, CELL - 8, 6);
     ctx.fill();
+    ctx.shadowColor = colors.shelter;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = colors.shelter;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 4, py + 4, CELL - 8, CELL - 8);
+    ctx.shadowBlur = 0;
     ctx.fillStyle = colors.textDark;
     ctx.font = "bold 15px Segoe UI, Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("A", px + CELL / 2, py + CELL / 2);
+    ctx.fillText("✚", px + CELL / 2, py + CELL / 2);
   }
 }
 
@@ -434,8 +563,18 @@ function drawAgents(ctx, agents, agentColor) {
     const radius = crowded ? 10 : 7.5;
     ctx.beginPath();
     ctx.fillStyle = agentColor;
-    ctx.arc(px, py, radius, 0, Math.PI * 2);
+    ctx.arc(px, py - 4, radius * 0.62, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillRect(px - 3.5, py + 1, 7, 8);
+    const walk = Math.sin(performance.now() / 100 + px + py) * 3;
+    ctx.strokeStyle = agentColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px - 2, py + 8);
+    ctx.lineTo(px - 5, py + 13 + walk);
+    ctx.moveTo(px + 2, py + 8);
+    ctx.lineTo(px + 5, py + 13 - walk);
+    ctx.stroke();
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = colors.bg;
     ctx.stroke();
@@ -446,6 +585,46 @@ function drawAgents(ctx, agents, agentColor) {
       ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+}
+
+function drawParticles(ctx) {
+  const t = performance.now() / 1000;
+  ctx.fillStyle = "rgba(159, 230, 255, 0.28)";
+  for (let i = 0; i < 16; i += 1) {
+    const x = ((i * 97 + t * 18) % 560);
+    const y = ((i * 53 + Math.sin(t + i) * 8) % 560);
+    ctx.beginPath();
+    ctx.arc(x, y, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawMiniMap() {
+  miniCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+  const scale = miniCanvas.width / GRID_SIZE;
+  miniCtx.fillStyle = "#263b4f";
+  miniCtx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
+  for (const cellKey of ROAD_CELLS) {
+    const [x, y] = cellKey.split(",").map(Number);
+    miniCtx.fillStyle = "#d7e0e8";
+    miniCtx.fillRect(x * scale, y * scale, scale, scale);
+  }
+  for (const cellKey of state.blocked) {
+    const [x, y] = cellKey.split(",").map(Number);
+    miniCtx.fillStyle = scenarios[state.scenarioIndex].color;
+    miniCtx.fillRect(x * scale, y * scale, scale, scale);
+  }
+  for (const [x, y] of shelters) {
+    miniCtx.fillStyle = colors.shelter;
+    miniCtx.fillRect(x * scale, y * scale, scale, scale);
+  }
+  for (const agent of state.aiAgents) {
+    if (agent.evacuated) continue;
+    miniCtx.fillStyle = colors.agent;
+    miniCtx.beginPath();
+    miniCtx.arc((agent.visual[0] + 0.5) * scale, (agent.visual[1] + 0.5) * scale, 2.4, 0, Math.PI * 2);
+    miniCtx.fill();
   }
 }
 
@@ -473,6 +652,8 @@ function updateMetrics() {
   setText("remainingKpi", ai.remaining.toFixed(0));
   setText("avgKpi", `${ai.avgTime.toFixed(1)}s`);
   setText("efficiencyKpi", `${efficiency}%`);
+  setText("progressText", `${Math.round((ai.evacuated / TOTAL_AGENTS) * 100)}%`);
+  document.querySelector("#progressBar").style.width = `${(ai.evacuated / TOTAL_AGENTS) * 100}%`;
 
   setText("aiEvacuated", `${ai.evacuated}/${TOTAL_AGENTS}`);
   setText("aiAvg", `${ai.avgTime.toFixed(1)}s`);
@@ -490,6 +671,7 @@ function updateMetrics() {
   setText("timeComparison", `Ganho medio de tempo: ${avgGain >= 0 ? "+" : ""}${avgGain.toFixed(1)}s`);
 
   document.querySelector("#aiAlert").classList.toggle("show", performance.now() < state.alertUntil);
+  document.querySelector("#eventFeed").innerHTML = state.feed.map((item) => `<li>${item}</li>`).join("");
 }
 
 function checkFinish() {
@@ -518,10 +700,16 @@ function showResults() {
   setText("humanTotalResult", `${human.totalTime.toFixed(1)}s`);
   setText("humanSavedResult", `${human.evacuated}/${TOTAL_AGENTS}`);
   setText("humanCongestionResult", `${human.congestion.toFixed(0)}%`);
+  setText("aiRecalcResult", state.aiAgents.reduce((sum, agent) => sum + agent.recalcCount, 0).toFixed(0));
+  const reduction = Math.max(0, human.congestion - ai.congestion);
+  const efficiency = Math.max(0, Math.min(100, aiScore - humanScore + 50));
+  setText("congestionReductionResult", `${reduction.toFixed(0)}%`);
+  setText("aiEfficiencyResult", `${efficiency}%`);
   setText("resultWinner", aiBest ? "🏆 Melhor estrategia: Inteligencia Artificial" : "🏆 Melhor estrategia: Rota simples");
   document.querySelector("#aiResultCard").classList.toggle("best", aiBest);
   document.querySelector("#humanResultCard").classList.toggle("best", !aiBest);
   document.querySelector("#resultModal").classList.add("show");
+  playTone("done");
 }
 
 function setText(id, value) {
@@ -547,7 +735,7 @@ function updatePauseButton() {
 function frame(now) {
   const delta = Math.min(50, now - state.lastFrame);
   state.lastFrame = now;
-  if (!state.paused) {
+  if (state.started && !state.paused) {
     state.elapsed += delta / 1000;
     state.stepAccumulator += delta;
     animateAgents(state.aiAgents, delta);
@@ -558,9 +746,15 @@ function frame(now) {
       state.stepAccumulator -= STEP_INTERVAL;
     }
     checkFinish();
+    if (state.elapsed - state.lastFeedAt > 4) {
+      const messages = ["Novo bloqueio detectado", "Rota alternativa encontrada", "Congestionamento identificado", "IA recalculando rota"];
+      addFeed(messages[Math.floor((state.elapsed / 4) % messages.length)]);
+      state.lastFeedAt = state.elapsed;
+    }
   }
   drawMap(aiCtx, state.aiAgents, colors.route, colors.agent, true);
   drawMap(simpleCtx, state.simpleAgents, colors.routeSimple, colors.agentSimple, false);
+  drawMiniMap();
   updateMetrics();
   requestAnimationFrame(frame);
 }
@@ -581,6 +775,27 @@ document.querySelector("#resetButton").addEventListener("click", () => reset());
 document.querySelector("#newButton").addEventListener("click", () => reset(true));
 document.querySelector("#closeResultButton").addEventListener("click", () => {
   document.querySelector("#resultModal").classList.remove("show");
+});
+
+document.querySelector("#startButton").addEventListener("click", () => {
+  state.started = true;
+  reset();
+  document.querySelector("#startScreen").classList.add("hidden");
+  playTone("siren");
+});
+
+document.querySelector("#howButton").addEventListener("click", () => {
+  document.querySelector("#startInfo").textContent = "As pessoas saem das areas de risco e procuram os abrigos verdes. A tela compara a rota inteligente da IA com uma estrategia simples.";
+});
+
+document.querySelector("#aboutAiButton").addEventListener("click", () => {
+  document.querySelector("#startInfo").textContent = "A IA usa o algoritmo A* para calcular caminhos rapidos, detectar bloqueios e encontrar rotas alternativas quando ha perigo ou congestionamento.";
+});
+
+document.querySelector("#soundButton").addEventListener("click", () => {
+  state.soundOn = !state.soundOn;
+  document.querySelector("#soundButton").textContent = state.soundOn ? "🔊 Som" : "🔇 Som";
+  playTone("alert");
 });
 
 window.addEventListener("keydown", (event) => {
