@@ -3,178 +3,115 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SmartEvac | Centro de Operacoes</title>
+    <title>SMART EVAC</title>
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <section id="startScreen" class="start-screen">
-      <div class="start-panel">
-        <span class="badge">Defesa Civil • Smart City Monitor</span>
+    <section id="home" class="screen home-screen">
+      <div class="city-animation" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="hero-card">
+        <span class="eyebrow">Centro de Operacoes de Cidade Inteligente</span>
         <h1>SMART EVAC</h1>
-        <p>Sistema Inteligente de Evacuacao Urbana</p>
-        <div class="start-actions">
-          <button id="startButton">▶ Iniciar Simulacao</button>
-          <button id="howButton">📖 Como Funciona</button>
-          <button id="aboutAiButton">🧠 Sobre a IA</button>
+        <p>Como a Inteligencia Artificial pode salvar vidas em emergencias urbanas</p>
+        <div class="scenario-picks">
+          <button data-scenario="0">🔥 Simular Incendio</button>
+          <button data-scenario="1">🌊 Simular Enchente</button>
+          <button data-scenario="2">☣️ Simular Acidente Industrial</button>
         </div>
-        <div id="startInfo" class="start-info">
-          Escolha um cenario, observe as pessoas buscando abrigos verdes e compare a IA A* com uma rota simples.
+        <div class="learn-actions">
+          <button id="howBtn">📖 Como Funciona</button>
+          <button id="aiBtn">🧠 O que a IA faz?</button>
         </div>
+        <p id="learnText" class="learn-text">Escolha uma emergencia e tente evacuar a cidade melhor que a IA.</p>
       </div>
     </section>
 
-    <main class="app">
-      <header class="command-header">
-        <div class="brand">
-          <span class="badge">Defesa Civil • Cidade Inteligente</span>
-          <h1>🚨 SmartEvac</h1>
-          <p>Simulador de evacuacao urbana com Inteligencia Artificial para resposta a emergencias.</p>
+    <section id="story" class="screen story-screen hidden">
+      <div class="story-card">
+        <span id="storyTag" class="eyebrow">Emergencia urbana</span>
+        <h2 id="storyTitle">Uma emergencia começou no centro da cidade.</h2>
+        <p id="storyText">24 pessoas precisam ser evacuadas. Voce consegue fazer melhor que a Inteligencia Artificial?</p>
+        <button id="challengeBtn">🚀 INICIAR DESAFIO</button>
+      </div>
+    </section>
+
+    <main id="app" class="app hidden">
+      <header class="topbar">
+        <div>
+          <span id="modeLabel" class="eyebrow">Desafio do visitante</span>
+          <h1>SMART EVAC</h1>
+          <p id="instruction">Clique nas ruas para criar uma rota ate um abrigo verde.</p>
         </div>
-        <div class="mission-box">
-          <strong>🎯 Objetivo</strong>
-          <span>Evacuar todas as pessoas ate os abrigos verdes evitando as areas vermelhas.</span>
+        <div class="top-actions">
+          <button id="confirmRoute">✅ Confirmar Minha Estrategia</button>
+          <button id="runAi" class="hidden">🧠 Ver a IA trabalhando</button>
+          <button id="restart">↺ Novo desafio</button>
         </div>
       </header>
 
-      <section class="control-strip" aria-label="Controles da simulacao">
-        <div class="scenario-controls">
-          <button class="scenario-button active" data-scenario="0">🔥 Incendio</button>
-          <button class="scenario-button" data-scenario="1">🌊 Enchente</button>
-          <button class="scenario-button" data-scenario="2">🏭 Acidente industrial</button>
+      <section class="experience">
+        <div class="map-shell">
+          <canvas id="cityCanvas" width="900" height="640" aria-label="Mapa urbano interativo"></canvas>
         </div>
-        <div class="run-controls">
-          <button id="pauseButton">⏸️ Pausar</button>
-          <button id="resetButton">🔁 Reiniciar</button>
-          <button id="newButton">🗺️ Novo mapa</button>
-          <button id="soundButton">🔇 Som</button>
-        </div>
-      </section>
 
-      <section class="legend-bar" aria-label="Legenda visual">
-        <div><span class="swatch shelter"></span>🟩 Abrigo seguro</div>
-        <div><span class="swatch risk"></span>🟥 Area de risco</div>
-        <div><span class="swatch route"></span>🟦 Rota calculada pela IA</div>
-        <div><span class="swatch person"></span>🟨 Pessoa</div>
-        <div><span class="swatch road"></span>⬜ Rua livre</div>
-        <div><span class="swatch obstacle"></span>⬛ Obstaculo</div>
-      </section>
-
-      <section class="kpi-row" aria-label="Indicadores principais">
-        <article class="kpi saved"><span>✅ Pessoas salvas</span><strong id="savedKpi">0</strong></article>
-        <article class="kpi remaining"><span>🧍 Pessoas restantes</span><strong id="remainingKpi">24</strong></article>
-        <article class="kpi time"><span>⏱️ Tempo medio</span><strong id="avgKpi">0.0s</strong></article>
-        <article class="kpi efficiency"><span>⚡ Eficiencia da IA</span><strong id="efficiencyKpi">0%</strong></article>
-      </section>
-
-      <section class="workspace">
-        <section class="maps" aria-label="Comparacao visual de evacuacao">
-          <article class="map-panel ai-panel">
-            <div class="map-title">
-              <h2>Evacuacao com Inteligencia Artificial (A*)</h2>
-              <span class="status-pill">🧠 rota inteligente</span>
-            </div>
-            <canvas id="aiCanvas" width="560" height="560" aria-label="Mapa com IA"></canvas>
-          </article>
-
-          <article class="map-panel human-panel">
-            <div class="map-title">
-              <h2>Evacuacao sem Inteligencia Artificial</h2>
-              <span class="status-pill human">👤 rota simples</span>
-            </div>
-            <canvas id="simpleCanvas" width="560" height="560" aria-label="Mapa sem IA"></canvas>
-          </article>
-        </section>
-
-        <aside class="dashboard">
-          <div class="scenario-card">
-            <span id="scenarioTag">🔥 Incendio</span>
-            <h2>Centro de Operacoes</h2>
-            <p id="scenarioDescription">Focos de calor bloqueiam quarteiroes e criam corredores estreitos.</p>
+        <aside class="command-panel">
+          <div class="emergency-card">
+            <span>🚨 Tipo de emergencia</span>
+            <strong id="emergencyName">Incendio</strong>
           </div>
 
-          <div class="progress-panel">
-            <div class="progress-label"><span>Evacuacao concluida</span><strong id="progressText">0%</strong></div>
-            <div class="progress-track"><div id="progressBar"></div></div>
+          <div class="progress-card">
+            <span>Evacuacao concluida</span>
+            <strong id="progressText">0%</strong>
+            <div class="progress"><div id="progressBar"></div></div>
           </div>
 
-          <div id="aiAlert" class="ai-alert">🧠 IA recalculando rota devido ao perigo</div>
+          <div class="metrics">
+            <article><span>👥 Pessoas salvas</span><strong id="savedMetric">0</strong></article>
+            <article><span>⏱ Tempo</span><strong id="timeMetric">0.0s</strong></article>
+            <article><span>🚗 Congestionamento</span><strong id="congestionMetric">0%</strong></article>
+            <article><span>🧠 Eficiencia da IA</span><strong id="efficiencyMetric">--</strong></article>
+          </div>
 
-          <div class="live-feed">
-            <h3>📡 Mensagens em tempo real</h3>
-            <ul id="eventFeed">
-              <li>Centro de Operacoes em monitoramento ativo.</li>
+          <div class="compare-card">
+            <h3>🏆 Comparacao</h3>
+            <p><span>Visitante</span><strong id="visitorSummary">Aguardando</strong></p>
+            <p><span>IA</span><strong id="aiSummary">Aguardando</strong></p>
+          </div>
+
+          <div class="message-card">
+            <h3>📡 Mensagens</h3>
+            <ul id="messages">
+              <li>Escolha ruas conectadas para guiar a evacuacao.</li>
             </ul>
           </div>
-
-          <div class="minimap-card">
-            <h3>🗺️ Minimapa</h3>
-            <canvas id="miniCanvas" width="220" height="220" aria-label="Minimapa"></canvas>
-          </div>
-
-          <div class="winner-panel">
-            <h3>🏆 Quem esta ganhando?</h3>
-            <div class="score-line"><span>🤖 IA</span><strong id="aiScore">0 pontos</strong></div>
-            <div class="score-line"><span>👤 Humano</span><strong id="humanScore">0 pontos</strong></div>
-            <p id="winnerText">Aguardando evacuacoes...</p>
-          </div>
-
-          <div class="metric-grid">
-            <div class="metric-group">
-              <h3>🤖 Com IA</h3>
-              <dl>
-                <div><dt>Pessoas salvas</dt><dd id="aiEvacuated">0/24</dd></div>
-                <div><dt>Tempo medio</dt><dd id="aiAvg">0.0s</dd></div>
-                <div><dt>Congestionamento</dt><dd id="aiCongestion">0%</dd></div>
-                <div><dt>Restantes</dt><dd id="aiRemaining">24</dd></div>
-              </dl>
-            </div>
-
-            <div class="metric-group human">
-              <h3>👤 Sem IA</h3>
-              <dl>
-                <div><dt>Pessoas salvas</dt><dd id="simpleEvacuated">0/24</dd></div>
-                <div><dt>Tempo medio</dt><dd id="simpleAvg">0.0s</dd></div>
-                <div><dt>Congestionamento</dt><dd id="simpleCongestion">0%</dd></div>
-                <div><dt>Restantes</dt><dd id="simpleRemaining">24</dd></div>
-              </dl>
-            </div>
-          </div>
-
-          <div class="comparison">
-            <h3>📊 Analise ao vivo</h3>
-            <p id="evacuationComparison">IA evacuou +0 pessoa(s)</p>
-            <p id="timeComparison">Ganho medio de tempo: +0.0s</p>
-          </div>
-
-          <p class="shortcuts">Teclas: 1, 2, 3 mudam cenario | Espaco pausa | R reinicia | N novo mapa</p>
         </aside>
       </section>
     </main>
 
-    <section id="resultModal" class="result-modal" aria-hidden="true">
+    <section id="result" class="screen result-screen hidden">
       <div class="result-card">
-        <span class="badge">Simulacao concluida</span>
-        <h2>🏁 RESULTADO DA SIMULACAO</h2>
-        <div id="resultWinner" class="result-winner">Melhor estrategia: IA</div>
-        <div class="result-celebration">✦ ✦ ✦</div>
-        <div class="result-columns">
-          <article id="aiResultCard">
-            <h3>🤖 Com IA</h3>
-            <p><span>Tempo total</span><strong id="aiTotalResult">0.0s</strong></p>
-            <p><span>Pessoas salvas</span><strong id="aiSavedResult">0/24</strong></p>
-            <p><span>Congestionamento</span><strong id="aiCongestionResult">0%</strong></p>
-            <p><span>Rotas recalculadas</span><strong id="aiRecalcResult">0</strong></p>
-            <p><span>Eficiencia da IA</span><strong id="aiEfficiencyResult">0%</strong></p>
+        <div class="sparkle">✦ ✦ ✦</div>
+        <h2>🏆 RESULTADO</h2>
+        <p id="resultPhrase">A Inteligencia Artificial encontrou rotas mais eficientes.</p>
+        <div class="result-grid">
+          <article id="visitorResult">
+            <h3>🙂 Visitante</h3>
+            <p><span>Tempo</span><strong id="visitorTime">0.0s</strong></p>
+            <p><span>Pessoas salvas</span><strong id="visitorSaved">0</strong></p>
+            <p><span>Congestionamento</span><strong id="visitorCongestion">0%</strong></p>
           </article>
-          <article id="humanResultCard">
-            <h3>👤 Sem IA</h3>
-            <p><span>Tempo total</span><strong id="humanTotalResult">0.0s</strong></p>
-            <p><span>Pessoas salvas</span><strong id="humanSavedResult">0/24</strong></p>
-            <p><span>Congestionamento</span><strong id="humanCongestionResult">0%</strong></p>
-            <p><span>Reducao de congestionamento</span><strong id="congestionReductionResult">0%</strong></p>
+          <article id="aiResult">
+            <h3>🧠 Inteligencia Artificial</h3>
+            <p><span>Tempo</span><strong id="aiTime">0.0s</strong></p>
+            <p><span>Pessoas salvas</span><strong id="aiSaved">0</strong></p>
+            <p><span>Congestionamento</span><strong id="aiCongestion">0%</strong></p>
+            <p><span>Rotas recalculadas</span><strong id="aiRecalc">0</strong></p>
           </article>
         </div>
-        <button id="closeResultButton">Continuar observando</button>
+        <button id="playAgain">Jogar novamente</button>
       </div>
     </section>
 
